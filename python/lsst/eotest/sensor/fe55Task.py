@@ -84,10 +84,12 @@ class Fe55Task(pipeBase.Task):
         # Detect and fit 2D Gaussian to Fe55 charge clusters,
         # accumulating the results by amplifier.
         #
+        ret = {}
         fitter = PsfGaussFit(nsig=self.config.nsig, fit_xy=self.config.fit_xy)
         gains, gain_errors, sigma_modes = {}, {}, {}
         if fe55_catalog is None:
-            for infile in infiles:
+            for filenum, infile in enumerate(infiles):
+                print 'Processing %s of %s files'%(filenum, len(infiles))
                 if self.config.verbose:
                     self.log.info("processing %s" % infile)
                 ccd = MaskedCCD(infile, mask_files=mask_files,
@@ -95,49 +97,58 @@ class Fe55Task(pipeBase.Task):
                 for amp in ccd:
                     if self.config.verbose:
                         self.log.info("  amp %i" % amp)
-                    if gain_errors.has_key(amp):
-                        gain_accuracy = np.abs(gain_errors[amp]/gains[amp])
-                        if self.config.verbose:
-                            message = "  Relative gain accuracy, dgain/gain " \
-                                 + "= %.2e" % gain_accuracy
-                            self.log.info(message)
-                        if gain_accuracy < accuracy_req:
-                            # Requested accuracy already obtained, so
-                            # skip cluster fitting.
-                            continue
+                    # if gain_errors.has_key(amp):
+                    #     gain_accuracy = np.abs(gain_errors[amp]/gains[amp])
+                    #     if self.config.verbose:
+                    #         message = "  Relative gain accuracy, dgain/gain " \
+                    #              + "= %.2e" % gain_accuracy
+                    #         self.log.info(message)
+                    #     if gain_accuracy < accuracy_req:
+                    #         # Requested accuracy already obtained, so
+                    #         # skip cluster fitting.
+                    #         continue
+                    
+                    fitter = PsfGaussFit(nsig=self.config.nsig, fit_xy=self.config.fit_xy)
+
                     fitter.process_image(ccd, amp, logger=self.log,
                                          oscan_fit_order=oscan_fit_order)
-                    gains, gain_errors, sigma_modes = \
-                        self.fit_gains(fitter, gains, gain_errors, sigma_modes,
-                                       amps=ccd.keys())
-            if self.config.output_file is None:
-                psf_results = os.path.join(self.config.output_dir,
-                                           '%s_psf_results_nsig%i.fits'
-                                           % (sensor_id, self.config.nsig))
-            else:
-                psf_results = self.config.output_file
-            if self.config.verbose:
-                self.log.info("Writing psf results file to %s" % psf_results)
-            fitter.write_results(outfile=psf_results)
-            namps = len(ccd)
-        else:
-            fitter.read_fe55_catalog(fe55_catalog)
-            namps = fits.open(fe55_catalog)[0].header['NAMPS']
+                    if not ret.has_key(amp):
+                        ret[amp] = []
+                        ret[amp].extend(fitter.dn_fp)
+                    else:
+                        ret[amp].extend(fitter.dn_fp)
+        return ret
+        #             # gains, gain_errors, sigma_modes = \
+        #             #     self.fit_gains(fitter, gains, gain_errors, sigma_modes,
+        #             #                    amps=ccd.keys())
+        #     if self.config.output_file is None:
+        #         psf_results = os.path.join(self.config.output_dir,
+        #                                    '%s_psf_results_nsig%i.fits'
+        #                                    % (sensor_id, self.config.nsig))
+        #     else:
+        #         psf_results = self.config.output_file
+        #     if self.config.verbose:
+        #         self.log.info("Writing psf results file to %s" % psf_results)
+        #     fitter.write_results(outfile=psf_results)
+        #     namps = len(ccd)
+        # else:
+        #     fitter.read_fe55_catalog(fe55_catalog)
+        #     namps = fits.open(fe55_catalog)[0].header['NAMPS']
 
-        results_file = self.config.eotest_results_file
-        if results_file is None:
-            results_file = os.path.join(self.config.output_dir,
-                                        '%s_eotest_results.fits' % sensor_id)
+        # results_file = self.config.eotest_results_file
+        # if results_file is None:
+        #     results_file = os.path.join(self.config.output_dir,
+        #                                 '%s_eotest_results.fits' % sensor_id)
 
-        if self.config.verbose:
-            self.log.info("Writing gain and psf sigma results to %s"
-                          % results_file)
+        # if self.config.verbose:
+        #     self.log.info("Writing gain and psf sigma results to %s"
+        #                   % results_file)
 
-        results = EOTestResults(results_file, namps=namps)
-        for amp in gains:
-            results.add_seg_result(amp, 'GAIN', gains[amp])
-            results.add_seg_result(amp, 'GAIN_ERROR', gain_errors[amp])
-            results.add_seg_result(amp, 'PSF_SIGMA', sigma_modes[amp])
-        results.write(clobber=True)
+        # results = EOTestResults(results_file, namps=namps)
+        # for amp in gains:
+        #     results.add_seg_result(amp, 'GAIN', gains[amp])
+        #     results.add_seg_result(amp, 'GAIN_ERROR', gain_errors[amp])
+        #     results.add_seg_result(amp, 'PSF_SIGMA', sigma_modes[amp])
+        # results.write(clobber=True)
 
         return gains

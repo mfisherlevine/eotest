@@ -12,3 +12,5 @@ utilLib.py
 .subversion
 .sconf_temp
 *.log
+*.fits
+version.py
